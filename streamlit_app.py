@@ -3,59 +3,60 @@ import requests
 from datetime import datetime
 import pytz
 from timezonefinder import TimezoneFinder
-from streamlit_js_eval import get_geolocation # Esto es para el GPS real
+from streamlit_js_eval import get_geolocation
 
 st.set_page_config(page_title="IA de Miguel", page_icon="📍")
 
+# Título con tu estilo
 st.title("🚀 ia inteligente sencilla de miguel")
 
-# 1. Intentamos sacar el GPS real del dispositivo (móvil o PC)
+# Pedimos la ubicación GPS
 loc = get_geolocation()
 
-def obtener_datos(lat_gps=None, lon_gps=None):
+def obtener_datos_final(lat_gps, lon_gps):
     try:
-        if lat_gps and lon_gps:
-            # Si tenemos GPS, lo usamos directamente
-            lat, lon = lat_gps, lon_gps
-            # Buscamos el nombre de la ciudad por coordenadas
-            geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}"
-            ciudad = requests.get(geo_url, headers={'User-Agent': 'MiguelApp'}).json().get('address', {}).get('city', 'Tu zona')
-        else:
-            # Si no hay GPS, usamos IP pero bloqueando los servidores de Google
-            res = requests.get('http://ip-api.com/json/').json()
-            if "Google" in res.get('org', ''):
-                # Si detecta Google, forzamos tu zona real (Mallorca)
-                ciudad, lat, lon = "Palma de Mallorca", 39.5693, 2.6502
-            else:
-                ciudad, lat, lon = res.get('city'), res.get('lat'), res.get('lon')
-
-        # Hora exacta según las coordenadas
+        # Buscamos el nombre del sitio por coordenadas (Reverse Geocoding)
+        # Usamos un servicio que suele dar el municipio o ciudad
+        url_geo = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat_gps}&lon={lon_gps}"
+        res_geo = requests.get(url_geo, headers={'User-Agent': 'MiguelApp'}).json()
+        
+        # Intentamos sacar la ciudad, el pueblo o la villa
+        direccion = res_geo.get('address', {})
+        ciudad = direccion.get('city') or direccion.get('town') or direccion.get('village') or direccion.get('suburb') or "Tu ubicación"
+        
+        # Hora exacta según GPS
         tf = TimezoneFinder()
-        zona_nombre = tf.timezone_at(lng=lon, lat=lat) or 'Europe/Madrid'
+        zona_nombre = tf.timezone_at(lng=lon_gps, lat=lat_gps) or 'Europe/Madrid'
         zona = pytz.timezone(zona_nombre)
         hora = datetime.now(zona).strftime('%H:%M:%S')
 
-        # Clima real
-        clima_res = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true").json()
+        # Clima exacto
+        clima_res = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat_gps}&longitude={lon_gps}&current_weather=true").json()
         temp = clima_res['current_weather']['temperature']
         
         return ciudad, temp, hora
     except:
-        return "Detectando...", "--", "--:--:--"
-
-# Si el navegador nos da la ubicación:
-if loc:
-    lat_real = loc['coords']['latitude']
-    lon_real = loc['coords']['longitude']
-    ciudad, temp, hora = obtener_datos(lat_real, lon_real)
-else:
-    st.warning("Pulsa 'Allow' (Permitir) arriba si quieres precisión GPS, o espera a que detecte tu IP...")
-    ciudad, temp, hora = obtener_datos()
+        return "Cargando...", "--", "--:--:--"
 
 st.divider()
-c1, c2 = st.columns(2)
-c1.metric("📍 Vives en", ciudad)
-c2.metric("🌡️ Temperatura", f"{temp} °C")
 
-st.subheader(f"🕒 Tu hora exacta: {hora}")
-st.success(f"💡 **Consejo de Miguel:** ¡Disfruta de este momento en {ciudad}!")
+if loc:
+    # Si diste a permitir, usamos tus coordenadas reales
+    lat = loc['coords']['latitude']
+    lon = loc['coords']['longitude']
+    ciudad, temp, hora = obtener_datos_final(lat, lon)
+    
+    c1, c2 = st.columns(2)
+    c1.metric("📍 Estás en:", ciudad)
+    c2.metric("🌡️ Temperatura:", f"{temp} °C")
+    
+    st.subheader(f"🕒 Hora exacta: {hora}")
+    st.success(f"💡 **Consejo de Miguel:** Estás viendo el tiempo real en {ciudad}.")
+else:
+    # Mensaje mientras esperas o si no das permiso
+    st.info("Esperando ubicación... Haz clic en 'Allow' (Permitir) arriba para localizarte.")
+    # Datos por defecto (Palma) por si no hay GPS
+    st.metric("📍 Estás en:", "Palma (por defecto)")
+
+st.divider()
+st.caption("Miguel IA • v3.3 Precisión GPS")
