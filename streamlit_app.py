@@ -11,68 +11,72 @@ st.set_page_config(page_title="IA de Miguel", page_icon="🌤️")
 
 st.title("🚀 ia inteligente sencilla de miguel")
 
-# --- LÓGICA DE CONSEJOS (Solo cambia al refrescar) ---
-def obtener_consejo(codigo):
-    mensajes = {
-        0: [("Despejado ☀️", "¡Día top! Gafas de sol y a disfrutar."), 
-            ("Despejado ☀️", "Cielo limpio, como tu futuro. ¡A por todas!")],
-        1: [("Casi despejado 🌤️", "Buen tiempo para salir a dar una vuelta."),
-            ("Casi despejado 🌤️", "El sol está ahí fuera esperándote.")],
-        3: [("Nublado ☁️", "Día gris, pero tú eres el crack que le da color."),
-            ("Nublado ☁️", "¡No dejes que las nubes te quiten la sonrisa!")],
-        61: [("Lluvia 🌧️", "Coge el paraguas, Miguel no quiere que te mojes."),
-             ("Lluvia 🌧️", "Día de lluvia, día de suerte. ¡A tope!")],
-    }
-    # Si el código no está, mensaje genérico
-    opciones = mensajes.get(codigo, [("Variable 🌈", "Disfruta del día haga el tiempo que haga.")])
-    return random.choice(opciones)
+# --- LÓGICA DE CONSEJOS (Solo cambian al cargar/refrescar) ---
+if 'consejo_fijo' not in st.session_state:
+    st.session_state.consejo_fijo = None
+
+def obtener_consejo_estatico(codigo):
+    if st.session_state.consejo_fijo is None:
+        mensajes = {
+            0: [("Despejado ☀️", "¡Día top! Gafas de sol y a disfrutar."), 
+                ("Despejado ☀️", "Cielo limpio, como tu futuro. ¡A por todas!")],
+            1: [("Casi despejado 🌤️", "Buen tiempo para salir a dar una vuelta.")],
+            3: [("Nublado ☁️", "Día gris, pero tú eres el crack que le da color."),
+                ("Nublado ☁️", "¡No dejes que las nubes te quiten la sonrisa!")],
+            61: [("Lluvia 🌧️", "Coge el paraguas, Miguel no quiere que te mojes.")],
+        }
+        opciones = mensajes.get(codigo, [("Variable 🌈", "Disfruta del día.")])
+        st.session_state.consejo_fijo = random.choice(opciones)
+    return st.session_state.consejo_fijo
 
 # --- OBTENCIÓN DE DATOS ---
 loc = get_geolocation()
 
 if loc:
     try:
-        lat = loc['coords']['latitude']
-        lon = loc['coords']['longitude']
+        lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
         
-        # 1. Datos de ubicación y clima
-        url_geo = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}"
-        res_geo = requests.get(url_geo, headers={'User-Agent': 'MiguelApp'}).json()
-        ciudad = res_geo.get('address', {}).get('city') or res_geo.get('address', {}).get('town') or "Tu ubicación"
+        # Datos de clima (cacheamos para que no sature la red)
+        @st.cache_data(ttl=600)
+        def datos_clima(la, lo):
+            res = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={la}&longitude={lo}&current_weather=true").json()
+            return res['current_weather']['temperature'], res['current_weather']['weathercode']
         
-        clima_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
-        clima_res = requests.get(clima_url).json()
-        temp = clima_res['current_weather']['temperature']
-        codigo_clima = clima_res['current_weather']['weathercode']
+        temp, codigo_clima = datos_clima(lat, lon)
         
-        # 2. Hora y Fecha (Estática)
+        # Zona horaria
         tf = TimezoneFinder()
-        zona_nombre = tf.timezone_at(lng=lon, lat=lat) or 'Europe/Madrid'
-        zona = pytz.timezone(zona_nombre)
-        ahora = datetime.now(zona)
-
-        # --- DISEÑO ---
-        st.divider()
-        col1, col2 = st.columns(2)
-        col1.metric("📍 Estás en:", ciudad)
-        col2.metric("🌡️ Temp:", f"{temp} °C")
+        zona = pytz.timezone(tf.timezone_at(lng=lon, lat=lat) or 'Europe/Madrid')
         
-        # Reloj sencillo en el color de la página
+        # --- DISEÑO DEL RELOJ EN TIEMPO REAL ---
+        # Este código HTML/JS hace que el reloj se mueva sin refrescar la página
         st.markdown(f"""
-            <div style="text-align: center; margin: 30px 0;">
-                <p style="margin: 0; font-size: 20px; opacity: 0.6;">{ahora.strftime('%d/%m/%Y')}</p>
-                <h1 style="font-size: 90px; margin: 0; font-weight: 300;">{ahora.strftime('%H:%M')}</h1>
+            <div style="text-align: center; margin: 20px 0; font-family: sans-serif;">
+                <h1 id="reloj" style="font-size: 80px; font-weight: 200; margin: 0;">--:--:--</h1>
+                <p style="opacity: 0.6; font-size: 20px;">{datetime.now(zona).strftime('%d/%m/%Y')}</p>
             </div>
+            <script>
+                function actualizarReloj() {{
+                    const ahora = new Date();
+                    const opciones = {{ timeZone: '{zona.zone}', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }};
+                    const horaTexto = ahora.toLocaleTimeString('es-ES', opciones);
+                    document.getElementById('reloj').innerHTML = horaTexto;
+                }}
+                setInterval(actualizarReloj, 1000);
+                actualizarReloj();
+            </script>
         """, unsafe_allow_html=True)
+
+        st.metric("🌡️ Temperatura actual", f"{temp} °C")
         
-        # Consejo de Miguel
-        estado, mensaje = obtener_consejo(codigo_clima)
+        # Consejo de Miguel (se queda fijo hasta que refresquen)
+        estado, mensaje = obtener_consejo_estatico(codigo_clima)
         st.info(f"**{estado}** — {mensaje}")
         
     except Exception as e:
-        st.error("Espera un momento, la IA está conectando...")
+        st.write("Cargando datos locales...")
 else:
-    st.info("📍 Haz clic en 'Allow' (Permitir) arriba para localizarte.")
+    st.info("📍 Esperando permiso de ubicación para activar el reloj...")
 
 st.divider()
-st.caption("v4.0 • Versión Estable y Sencilla")
+st.caption("v4.1 • Reloj fluido en tiempo real")
