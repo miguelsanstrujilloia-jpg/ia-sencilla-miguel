@@ -2,4 +2,3 @@ requests
 pytz
 timezonefinder
 streamlit-js-eval
-streamlit-autorefresh
