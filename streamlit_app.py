@@ -5,7 +5,7 @@ import random
 import time
 from streamlit_js_eval import get_geolocation
 
-# 1. Configuración y OCULTAR MENÚS (Para que no salga la barra de Fork/Stop)
+# 1. Configuración y OCULTAR MENÚS
 st.set_page_config(page_title="IA de Miguel", page_icon="🌤️", layout="centered")
 
 st.markdown("""
@@ -38,10 +38,19 @@ def obtener_consejo(codigo):
     return st.session_state.consejo_miguel
 
 # --- DATOS Y RELOJ ---
+# Intentamos obtener la ubicación
 loc = get_geolocation()
 
-if loc:
-    try:
+# Si todavía no hay respuesta del GPS, mostramos un aviso neutro en lugar del error rojo inmediato
+if loc is None:
+    st.info("📍 Buscando señal GPS... Si no aparece nada, comprueba que has pulsado 'Permitir' en la barra del navegador.")
+    # Pequeña pausa para dar tiempo al navegador a responder
+    time.sleep(2)
+    st.stop()
+
+# Si llegamos aquí es que hay localización o ha fallado definitivamente
+try:
+    if loc and 'coords' in loc:
         lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
         
         @st.cache_data(ttl=600)
@@ -55,25 +64,21 @@ if loc:
 
         st.write(f"📍 **{ciudad}** | 📅 {datetime.now().strftime('%d/%m/%Y')}")
 
-        # Contenedor para el reloj
         reloj_valla = st.empty()
-        
         st.metric("🌡️ Temperatura", f"{temp} °C")
+        
         estado, mensaje = obtener_consejo(cod)
         st.info(f"**{estado}** — {mensaje}")
 
-        # Bucle infinito para los segundos
         while True:
             ahora = datetime.now().strftime('%H:%M:%S')
             reloj_valla.markdown(f"<h1 style='text-align: center; font-size: 100px; font-weight: 200;'>{ahora}</h1>", unsafe_allow_html=True)
             time.sleep(1)
-
-    except:
+    else:
         st.error("No se ha podido acceder a la ubicación")
-else:
-    # Mensaje en rojo si no hay permisos o no carga el GPS
+
+except Exception as e:
     st.error("No se ha podido acceder a la ubicación")
-    st.info("💡 Por favor, asegúrate de pulsar 'Permitir' cuando el navegador te pida la ubicación.")
 
 st.divider()
-st.caption("v4.4 • Control de errores de GPS activado")
+st.caption("v4.5 • Sistema de detección de GPS mejorado")
