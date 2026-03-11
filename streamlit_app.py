@@ -49,4 +49,28 @@ def obtener_datos_completos(lat, lon):
         
         return ciudad, pais, temp, hora, estado, consejo
     except:
-        return "Localizando...", "", "--", "--:--:--", "
+        return "Localizando...", "", "--", "--:--:--", "...", "..."
+
+st.divider()
+
+if loc:
+    lat_r = loc['coords']['latitude']
+    lon_r = loc['coords']['longitude']
+    ciudad, pais, temp, hora, estado, consejo = obtener_datos_completos(lat_r, lon_r)
+    
+    col1, col2 = st.columns(2)
+    col1.metric("📍 Estás en:", ciudad)
+    col2.metric("🌡️ Temperatura:", f"{temp} °C")
+    
+    st.write(f"🌍 **País:** {pais}")
+    
+    # La hora ahora cambiará cada segundo visualmente
+    st.markdown(f"## 🕒 Hora exacta: `{hora}`")
+    
+    st.info(f"**Estado:** {estado}")
+    st.success(f"💡 **Consejo:** {consejo}")
+else:
+    st.info("Buscando señal GPS... Por favor, pulsa 'Allow' (Permitir).")
+
+st.divider()
+st.caption("Miguel IA • v3.5 Tiempo Real")
