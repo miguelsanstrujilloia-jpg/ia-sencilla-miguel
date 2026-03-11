@@ -2,58 +2,84 @@ import streamlit as st
 import requests
 from datetime import datetime
 import pytz
-from timezonefinder import TimezoneFinder # Nueva librería para la zona horaria
+from timezonefinder import TimezoneFinder
 
-# Configuración de la pestaña
-st.set_page_config(page_title="IA de Miguel", page_icon="🤖")
+# Configuración visual
+st.set_page_config(page_title="IA de Miguel", page_icon="🚀", layout="centered")
 
-st.title("🤖 IA inteligente sencilla de miguel")
+# Estilo personalizado con CSS
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f0f2f6;
+    }
+    .stMetric {
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-def obtener_datos_completos():
+st.title("🚀 ia inteligente sencilla de miguel")
+st.write("---")
+
+def obtener_datos():
     try:
-        # 1. Detectar ubicación y coordenadas por IP
-        geo_res = requests.get('https://ipapi.co/json/', timeout=3).json()
-        ciudad = geo_res.get('city', 'tu ubicación')
-        lat = geo_res.get('latitude', 39.5693)
-        lon = geo_res.get('longitude', 2.6502)
+        # NUEVO MOTOR DE UBICACIÓN (Más preciso)
+        geo_res = requests.get('http://ip-api.com/json/', timeout=5).json()
         
-        # 2. Detectar la Zona Horaria exacta según las coordenadas
+        # Si el motor detecta la ciudad, la usamos
+        if geo_res.get('status') == 'success':
+            ciudad = geo_res.get('city')
+            lat = geo_res.get('lat')
+            lon = geo_res.get('lon')
+        else:
+            ciudad, lat, lon = "Palma", 39.5693, 2.6502
+
+        # Zona Horaria
         tf = TimezoneFinder()
         nombre_zona = tf.timezone_at(lng=lon, lat=lat) or 'Europe/Madrid'
         zona_local = pytz.timezone(nombre_zona)
         hora_local = datetime.now(zona_local).strftime('%H:%M:%S')
-        
-        # 3. Pedir clima detallado
+
+        # Clima
         clima_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
-        clima_res = requests.get(clima_url, timeout=3).json()
+        clima_res = requests.get(clima_url).json()
         temp = clima_res['current_weather']['temperature']
         codigo = clima_res['current_weather']['weathercode']
-        
+
         # Diccionario de consejos
         info_clima = {
-            0: ("Despejado ☀️", "¡Día genial! Gafas de sol listas."),
-            1: ("Casi despejado 🌤️", "Buen tiempo para pasear."),
-            3: ("Nublado ☁️", "Día gris, ideal para un café."),
-            61: ("Lluvia 🌧️", "Coge el paraguas, Miguel avisa."),
-            95: ("Tormenta ⛈️", "Mejor quédate en casa.")
+            0: ("Despejado ☀️", "¡Día perfecto! Gafas de sol obligatorias."),
+            1: ("Casi despejado 🌤️", "Hace buen tiempo, ¡aprovéchalo!"),
+            2: ("Nubes y claros ⛅", "Día agradable para pasear."),
+            3: ("Nublado ☁️", "Está gris, pero tú dale color al día."),
+            61: ("Lluvia 🌧️", "Coge el paraguas, Miguel no quiere que te mojes."),
+            95: ("Tormenta ⛈️", "¡Rayos! Mejor quédate a cubierto.")
         }
         estado, consejo = info_clima.get(codigo, ("Variable 🌈", "Disfruta del día."))
         
         return ciudad, temp, estado, consejo, hora_local
     except:
-        return "Desconocida", "--", "N/A", "Sin conexión", "--:--:--"
+        return "Conectando...", "--", "Desconocido", "Reintentando...", "--:--:--"
 
-st.write("---")
-ciudad, temp, estado, consejo, hora = obtener_datos_completos()
+# Ejecutar y mostrar
+ciudad, temp, estado, consejo, hora = obtener_datos()
 
-col1, col2 = st.columns(2)
-with col1:
-    st.metric(label="📍 Estás en:", value=ciudad)
-with col2:
-    st.metric(label="🌡️ Temperatura:", value=f"{temp} °C")
+# Diseño en columnas
+c1, c2 = st.columns(2)
+with c1:
+    st.metric(label="📍 Ciudad Detectada", value=ciudad)
+with c2:
+    st.metric(label="🌡️ Temperatura", value=f"{temp} °C")
 
-st.info(f"**Estado:** {estado} | **Hora Local:** {hora}")
+st.markdown(f"### 🕒 Hora local: `{hora}`")
+
+# Cuadros de información con colores
+st.info(f"**Estado del cielo:** {estado}")
 st.success(f"💡 **Consejo de Miguel:** {consejo}")
 
 st.write("---")
-st.caption("ia inteligente sencilla de miguel • Detecta tu ciudad y tu hora estés donde estés.")
+st.caption("Hecho con ❤️ por Miguel • v3.0 Inteligente y Visual")
