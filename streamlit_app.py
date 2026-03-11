@@ -7,7 +7,7 @@ from timezonefinder import TimezoneFinder # Nueva librería para la zona horaria
 # Configuración de la pestaña
 st.set_page_config(page_title="IA de Miguel", page_icon="🤖")
 
-st.title("🤖 ia inteligente sencilla de miguel")
+st.title("🤖 IA inteligente sencilla de miguel")
 
 def obtener_datos_completos():
     try:
