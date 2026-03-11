@@ -1,8 +1,10 @@
 import streamlit as st
 import requests
 from datetime import datetime
+import pytz
 import random
 import time
+from timezonefinder import TimezoneFinder
 from streamlit_js_eval import get_geolocation
 
 # 1. Configuración y OCULTAR MENÚS
@@ -38,31 +40,32 @@ def obtener_consejo(codigo):
     return st.session_state.consejo_miguel
 
 # --- DATOS Y RELOJ ---
-# Intentamos obtener la ubicación
 loc = get_geolocation()
 
-# Si todavía no hay respuesta del GPS, mostramos un aviso neutro en lugar del error rojo inmediato
 if loc is None:
-    st.info("📍 Buscando señal GPS... Si no aparece nada, comprueba que has pulsado 'Permitir' en la barra del navegador.")
-    # Pequeña pausa para dar tiempo al navegador a responder
+    st.info("📍 Buscando señal GPS... Pulsa 'Permitir' si aparece el aviso.")
     time.sleep(2)
     st.stop()
 
-# Si llegamos aquí es que hay localización o ha fallado definitivamente
 try:
     if loc and 'coords' in loc:
         lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
         
+        # Obtener Zona Horaria automática según GPS
+        tf = TimezoneFinder()
+        nombre_zona = tf.timezone_at(lng=lon, lat=lat) or 'Europe/Madrid'
+        zona_local = pytz.timezone(nombre_zona)
+
         @st.cache_data(ttl=600)
         def cargar_info(la, lo):
             g = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={la}&lon={lo}", headers={'User-Agent': 'MiguelApp'}).json()
-            c = g.get('address', {}).get('city') or g.get('address', {}).get('town') or "Tu ubicación"
+            c = g.get('address', {}).get('city') or g.get('address', {}).get('town') or g.get('address', {}).get('village') or "Tu ubicación"
             cl = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={la}&longitude={lo}&current_weather=true").json()
             return c, cl['current_weather']['temperature'], cl['current_weather']['weathercode']
 
         ciudad, temp, cod = cargar_info(lat, lon)
 
-        st.write(f"📍 **{ciudad}** | 📅 {datetime.now().strftime('%d/%m/%Y')}")
+        st.write(f"📍 **{ciudad}** | 📅 {datetime.now(zona_local).strftime('%d/%m/%Y')}")
 
         reloj_valla = st.empty()
         st.metric("🌡️ Temperatura", f"{temp} °C")
@@ -70,9 +73,11 @@ try:
         estado, mensaje = obtener_consejo(cod)
         st.info(f"**{estado}** — {mensaje}")
 
+        # Bucle para el reloj con la hora local correcta
         while True:
-            ahora = datetime.now().strftime('%H:%M:%S')
-            reloj_valla.markdown(f"<h1 style='text-align: center; font-size: 100px; font-weight: 200;'>{ahora}</h1>", unsafe_allow_html=True)
+            # datetime.now(zona_local) asegura que si cambia la hora oficial, el reloj cambia solo
+            ahora_local = datetime.now(zona_local).strftime('%H:%M:%S')
+            reloj_valla.markdown(f"<h1 style='text-align: center; font-size: 100px; font-weight: 200;'>{ahora_local}</h1>", unsafe_allow_html=True)
             time.sleep(1)
     else:
         st.error("No se ha podido acceder a la ubicación")
@@ -81,4 +86,4 @@ except Exception as e:
     st.error("No se ha podido acceder a la ubicación")
 
 st.divider()
-st.caption("v4.5 • Sistema de detección de GPS mejorado")
+st.caption(f"v4.6 • Zona horaria activa: {nombre_zona}")
