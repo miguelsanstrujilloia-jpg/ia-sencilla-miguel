@@ -75,7 +75,7 @@ def obtener_consejo(codigo):
     st.session_state.consejo_miguel = random.choice(opciones)
     return st.session_state.consejo_miguel
 
-# --- CACHÉ DE INFORMACIÓN DE APIs ---
+# --- CACHÉ DE INFORMACIÓN DE APIs (Clima y reversión de coordenadas) ---
 @st.cache_data(ttl=600)
 def cargar_info(la, lo):
     ciudad = None
@@ -114,17 +114,42 @@ def cargar_info(la, lo):
         
     return ciudad, temp, cod
 
-# --- BÚSQUEDA MANUAL DE COORDENADAS ---
+# --- BÚSQUEDA MUNDIAL DE COORDENADAS (Usando Open-Meteo Geocoding) ---
 @st.cache_data(ttl=3600)
 def buscar_coordenadas(nombre_ciudad):
     try:
-        user_agent = f"MiguelAppSearch_{random.randint(1000, 9999)}"
-        url = f"https://nominatim.openstreetmap.org/search?format=json&q={nombre_ciudad}&limit=1"
-        res = requests.get(url, headers={'User-Agent': user_agent}, timeout=5).json()
-        if res:
-            lat = float(res[0]['lat'])
-            lon = float(res[0]['lon'])
-            nombre_bonito = res[0].get('display_name', nombre_ciudad).split(',')[0]
+        # Intentar buscar el texto completo
+        url = f"https://geocoding-api.open-meteo.com/v1/search?name={requests.utils.quote(nombre_ciudad)}&count=1&language=es&format=json"
+        response = requests.get(url, timeout=5)
+        res = response.json()
+        results = res.get('results')
+        
+        # Si no hay resultados y contiene una coma, buscamos solo por el primer término (ej: de "Tremp, Barcelona" busca "Tremp")
+        if not results and "," in nombre_ciudad:
+            primer_termino = nombre_ciudad.split(",")[0].strip()
+            url = f"https://geocoding-api.open-meteo.com/v1/search?name={requests.utils.quote(primer_termino)}&count=1&language=es&format=json"
+            response = requests.get(url, timeout=5)
+            res = response.json()
+            results = res.get('results')
+
+        if results:
+            result = results[0]
+            lat = result['latitude']
+            lon = result['longitude']
+            
+            # Formatear el nombre de la ubicación
+            name = result.get('name')
+            admin1 = result.get('admin1')
+            country = result.get('country')
+            
+            parts = [name]
+            if admin1 and admin1 != name:
+                parts.append(admin1)
+            if country:
+                nombre_bonito = f"{', '.join(parts)} ({country})"
+            else:
+                nombre_bonito = ', '.join(parts)
+                
             return lat, lon, nombre_bonito
     except Exception:
         pass
@@ -156,26 +181,29 @@ if lat is None or lon is None:
         st.session_state.lon = lon
         st.rerun()
     else:
-        # Si el GPS no responde o es lento, se le ofrece introducir la ciudad
-        st.info("📍 Buscando señal GPS... Si tarda en cargar o deseas poner tu ciudad manualmente, escríbela abajo:")
-        ciudad_inicial = st.text_input("Escribe tu ciudad o pueblo:", key="input_inicial")
-        if st.button("Establecer ubicación"):
+        # Formulario inicial si no carga el GPS
+        st.info("📍 Buscando señal GPS... Escribe tu ubicación para empezar al instante:")
+        with st.form("buscador_inicial"):
+            ciudad_inicial = st.text_input("Escribe tu ciudad, pueblo o país (ej: Tremp):")
+            buscar_init = st.form_submit_button("Establecer ubicación")
+            
+        if buscar_init and ciudad_inicial:
             res = buscar_coordenadas(ciudad_inicial)
             if res:
                 st.session_state.lat, st.session_state.lon, st.session_state.ciudad_manual = res
                 st.session_state.consejo_miguel = None
                 st.rerun()
             else:
-                st.error("No se ha encontrado esa localidad. Por favor, revisa cómo está escrita.")
+                st.error("❌ No se encontró esa ubicación. Intenta escribir el nombre completo.")
         st.stop()
 
-# --- SI YA TENEMOS LAS COORDENADAS (POR GPS O MANUAL) ---
+# --- SI YA TENEMOS LAS COORDENADAS ---
 try:
-    # Obtener Zona Horaria automática según GPS o ciudad buscada
+    # Obtener Zona Horaria según coordenadas
     nombre_zona = tf.timezone_at(lng=lon, lat=lat) or 'Europe/Madrid'
     zona_local = pytz.timezone(nombre_zona)
 
-    # Cargar datos del clima y ubicación
+    # Cargar clima y ubicación
     ciudad_detectada, temp, cod = cargar_info(lat, lon)
     ciudad = st.session_state.ciudad_manual or ciudad_detectada
 
@@ -232,14 +260,11 @@ try:
     
     st.divider()
 
-    # --- MENÚ DE CAMBIO MANUAL DE UBICACIÓN ---
+    # --- BUSCADOR DE CIUDAD EN EXPANDER ---
     with st.expander("⚙️ ¿No es tu ubicación? Cambiar ciudad"):
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            nueva_ciudad = st.text_input("Escribe el nombre de tu ciudad o pueblo:", key="buscar_nueva")
-        with col2:
-            st.write("") # Espacio estético
-            buscar_btn = st.button("Buscar")
+        with st.form("buscador_form"):
+            nueva_ciudad = st.text_input("Escribe tu ubicación (puedes poner 'Tremp, Barcelona', 'Barcelona' o cualquier sitio del mundo):")
+            buscar_btn = st.form_submit_button("🔍 Buscar Ubicación")
             
         if buscar_btn and nueva_ciudad:
             res = buscar_coordenadas(nueva_ciudad)
@@ -248,10 +273,10 @@ try:
                 st.session_state.consejo_miguel = None
                 st.rerun()
             else:
-                st.error("No se encontró. Intenta escribir el nombre completo.")
+                st.error("❌ No se encontró esa ubicación. Intenta escribir el nombre completo.")
         
         # Botón para restaurar la geolocalización automática
-        if st.button("🔄 Usar GPS automático del dispositivo"):
+        if st.button("🔄 Volver a usar GPS automático"):
             st.session_state.lat = None
             st.session_state.lon = None
             st.session_state.ciudad_manual = None
