@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import random
 from timezonefinder import TimezoneFinder
@@ -61,10 +61,10 @@ def obtener_consejo(codigo):
     st.session_state.consejo_miguel = random.choice(opciones)
     return st.session_state.consejo_miguel
 
-# --- CACHÉ DE INFORMACIÓN DE APIs (Definido a nivel de módulo) ---
+# --- CACHÉ DE INFORMACIÓN DE APIs ---
 @st.cache_data(ttl=600)
 def cargar_info(la, lo):
-    # 1. Obtener Ciudad (OSM Nominatim) con manejo de errores individual
+    # 1. Obtener Ciudad (OSM Nominatim)
     try:
         url_geo = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={la}&lon={lo}"
         g = requests.get(url_geo, headers={'User-Agent': 'MiguelApp/4.6'}, timeout=5).json()
@@ -73,7 +73,7 @@ def cargar_info(la, lo):
     except Exception:
         ciudad = "Tu ubicación"
         
-    # 2. Obtener Clima (Open-Meteo) con manejo de errores individual
+    # 2. Obtener Clima (Open-Meteo)
     try:
         url_clima = f"https://api.open-meteo.com/v1/forecast?latitude={la}&longitude={lo}&current_weather=true"
         cl = requests.get(url_clima, timeout=5).json()
@@ -88,8 +88,8 @@ def cargar_info(la, lo):
 # --- APLICACIÓN PRINCIPAL ---
 st.title("🚀 ia inteligente sencilla de miguel")
 
-# Solicitar geolocalización sin bloquear el servidor
-with st.spinner("📍 Buscando señal GPS..."):
+# Solicitar geolocalización del dispositivo
+with st.spinner("📍 Buscando señal GPS del dispositivo..."):
     loc = get_geolocation()
 
 if loc is None:
@@ -100,19 +100,24 @@ try:
     if loc and 'coords' in loc:
         lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
         
-        # Determinar zona horaria
+        # 1. Obtener Zona Horaria automática según GPS físico
         nombre_zona = tf.timezone_at(lng=lon, lat=lat) or 'Europe/Madrid'
         zona_local = pytz.timezone(nombre_zona)
 
-        # Cargar datos desde APIs (usando caché)
+        # 2. Cargar información de la ciudad y el clima basándonos en ese GPS
         ciudad, temp, cod = cargar_info(lat, lon)
 
-        # Mostrar Ubicación y Fecha
-        fecha_actual = datetime.now(zona_local).strftime('%d/%m/%Y')
+        # 3. Detectar si el dispositivo está actualmente en Horario de Verano (DST) o de Invierno
+        ahora_local = datetime.now(zona_local)
+        es_dst = ahora_local.dst() is not None and ahora_local.dst() != timedelta(0)
+        tipo_horario = "Horario de Verano (DST) ☀️" if es_dst else "Horario Estándar (Invierno) ❄️"
+
+        # Mostrar Ubicación real y la Fecha correspondiente a su zona horaria
+        fecha_actual = ahora_local.strftime('%d/%m/%Y')
         st.write(f"📍 **{ciudad}** | 📅 {fecha_actual}")
 
         # --- RELOJ DIGITAL EN JAVASCRIPT ---
-        # Ejecuta la hora en el cliente sin recargar el servidor de Streamlit
+        # Sincronizado en tiempo real con la zona horaria del dispositivo
         reloj_html = f"""
         <div id="reloj" style="
             text-align: center; 
@@ -155,10 +160,10 @@ try:
         st.info(f"**{estado}** — {mensaje}")
         
         st.divider()
-        st.caption(f"v4.6 • Zona horaria activa: {nombre_zona}")
+        st.caption(f"v4.6 • Zona horaria activa: {nombre_zona} ({tipo_horario})")
 
     else:
-        st.error("No se ha podido acceder a los datos de la ubicación.")
+        st.error("No se ha podido acceder a la ubicación del dispositivo.")
 
 except Exception as e:
-    st.error(f"Ocurrió un error inesperado al procesar los datos.")
+    st.error("Ocurrió un error al intentar determinar la ubicación o procesar la hora.")
